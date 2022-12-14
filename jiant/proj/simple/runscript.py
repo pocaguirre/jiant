@@ -150,7 +150,7 @@ def run_simple(args: RunConfiguration, with_continue: bool = False):
                     os.path.join(args.exp_dir, "cache", hf_config.model_type, task_name, phase)
                 ):
                     config = read_json(task_config_path_dict[task_name])
-                    if phase in config["paths"]:
+                    if "paths" in config and phase in config["paths"]:
                         phases_to_do.append(phase)
                     else:
                         phase_task_list.remove(task_name)

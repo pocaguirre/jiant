@@ -14,6 +14,7 @@ from sklearn.metrics import f1_score
 from sklearn.metrics import matthews_corrcoef
 from typing import Dict
 from typing import List
+from jiant.tasks.lib.classification import ClassificationTask
 
 import jiant.shared.model_resolution as model_resolution
 
@@ -321,7 +322,7 @@ class MultiLabelAccAndF1EvaluationScheme(BaseLogitsEvaluationScheme):
 
     def get_preds_from_accumulator(self, task, accumulator):
         logits = accumulator.get_accumulated()
-        return (logits > 0.5).astype(int)
+        return np.argmax(logits, axis=1)
 
     @classmethod
     def compute_metrics_from_preds_and_labels(cls, preds, labels):
@@ -334,6 +335,27 @@ class MultiLabelAccAndF1EvaluationScheme(BaseLogitsEvaluationScheme):
             "acc_and_f1_micro": (acc + f1_score(y_true=labels, y_pred=preds, average="micro")) / 2,
         }
         return Metrics(major=minor["acc_and_f1_micro"], minor=minor)
+
+
+class MacroF1Scheme(BaseLogitsEvaluationScheme):
+    def get_labels_from_cache_and_examples(self, task, cache, examples):
+        return get_label_ids_from_cache(cache=cache)
+
+    def get_preds_from_accumulator(self, task, accumulator):
+        logits = accumulator.get_accumulated()
+        return np.argmax(logits, axis=1)
+
+    @classmethod
+    def compute_metrics_from_preds_and_labels(cls, preds, labels):
+        # noinspection PyUnresolvedReferences
+        acc = float((preds == labels).mean())
+        labels = np.array(labels)
+        minor = {
+            "acc": acc,
+            "f1_macro": f1_score(y_true=labels, y_pred=preds, average="macro"),
+        }
+        return Metrics(major=minor["f1_macro"], minor=minor)
+
 
 
 class AccAndF1EvaluationScheme(BaseLogitsEvaluationScheme):
@@ -1121,6 +1143,8 @@ def get_evaluation_scheme_for_task(task) -> BaseEvaluationScheme:
         return Bucc2018EvaluationScheme()
     elif isinstance(task, tasks_retrieval.TatoebaTask):
         return TatoebaEvaluationScheme()
+    elif isinstance(task, ClassificationTask):
+        return MacroF1Scheme()
     else:
         raise KeyError(task)
 

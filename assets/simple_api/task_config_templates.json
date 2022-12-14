@@ -124,5 +124,23 @@
       "test": "./test.jsonl"
     },
     "name": "wnli"
+  },
+  "sentiment": {
+    "task": "sentiment",
+    "rel_paths": {
+      "train": "./train.jsonl",
+      "val": "./dev.jsonl",
+      "test": "./test.jsonl"
+    },
+    "name": "sentiment"
+  },
+  "topic": {
+    "task": "topic",
+    "rel_paths": {
+      "train": "./train.jsonl",
+      "val": "./dev.jsonl",
+      "test": "./test.jsonl"
+    },
+    "name": "topic"
   }
 }

@@ -5,6 +5,7 @@ import jiant.shared.caching as shared_caching
 import jiant.utils.torch_utils as torch_utils
 from jiant.tasks.core import FeaturizationSpec, TaskTypes
 from jiant.utils.display import maybe_tqdm, maybe_trange
+from jiant.tasks.lib.classification import ClassificationTask
 
 
 class MaxValidLengthRecorder:
@@ -150,6 +151,8 @@ def iter_chunk_convert_examples_to_dataset(
         )
     ):
         metadata = {"example_id": i}
+        if isinstance(task, ClassificationTask):
+            metadata['demographics'] = examples[i].demographics
         yield {"data_row": data_row, "metadata": metadata}
 
 

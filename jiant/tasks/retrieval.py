@@ -87,6 +87,7 @@ from jiant.tasks.lib.mcscript import MCScriptTask
 from jiant.tasks.lib.arct import ArctTask
 from jiant.tasks.lib.winogrande import WinograndeTask
 from jiant.tasks.lib.piqa import PiqaTask
+from jiant.tasks.lib.classification import ClassificationTask
 
 from jiant.tasks.core import Task
 from jiant.utils.python.io import read_json
@@ -178,12 +179,15 @@ TASK_DICT = {
     "mcscript": MCScriptTask,
     "arct": ArctTask,
     "winogrande": WinograndeTask,
-    "piqa": PiqaTask,
+    "piqa": PiqaTask
 }
 
 
 def get_task_class(task_name: str):
-    task_class = TASK_DICT[task_name]
+    if task_name not in TASK_DICT:
+        task_class = ClassificationTask
+    else:
+        task_class = TASK_DICT[task_name]
     assert issubclass(task_class, Task)
     return task_class
 
