@@ -77,7 +77,7 @@ class ClassificationTask(Task):
 
     TASK_TYPE = TaskTypes.CLASSIFICATION
 
-    def __init__(self, name: str, path_dict: dict, num_labels: int=None, labels: List[str]=None, demographics: List[str]=None):
+    def __init__(self, name: str, path_dict: dict, num_labels: int=None, labels: List[str]=None, demographics: List[str]=None, train_size: int=0):
         super().__init__(name, path_dict)
         if num_labels is None and labels is None:
             raise TypeError("num_labels or labels must be passed!")
@@ -90,6 +90,8 @@ class ClassificationTask(Task):
         self.LABEL_TO_ID, self.ID_TO_LABEL = labels_to_bimap(self.LABELS)
         if demographics is not None:
             self.demographics = demographics
+        if train_size != 0:
+            self.train_size = train_size
 
 
     def get_train_examples(self):
