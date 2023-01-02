@@ -15,6 +15,7 @@ from sklearn.metrics import matthews_corrcoef
 from typing import Dict
 from typing import List
 from jiant.tasks.lib.classification import ClassificationTask
+from jiant.ext.fairness import DF_training as fairness
 
 import jiant.shared.model_resolution as model_resolution
 
@@ -72,6 +73,34 @@ class BaseEvaluationScheme:
         self, task, accumulator: BaseAccumulator, tokenizer, labels
     ) -> Metrics:
         raise NotImplementedError()
+
+
+class ConcatenateLogitsDemographicsAccumulator(BaseAccumulator):
+    def __init__(self):
+        self.logits_list = []
+        self.guid_list = []
+        self.demographics = []
+
+    def update(self, batch_logits, batch_loss, batch, batch_metadata):
+        self.logits_list.append(batch_logits)
+        batch_guid = batch_metadata.get("guid")
+        if batch_guid is not None:
+            self.guid_list.append(batch_guid)
+        batch_demographics = batch_metadata.get("demographics")
+        self.demographics.append(batch_demographics)
+
+    def get_guids(self):
+        if self.guid_list:
+            return np.concatenate(self.guid_list)
+        else:
+            return None
+    
+    def get_demographics(self):
+        return np.concatenate(self.demographics)
+
+    def get_accumulated(self):
+        all_logits = np.concatenate(self.logits_list)
+        return all_logits
 
 
 class ConcatenateLogitsAccumulator(BaseAccumulator):
@@ -353,6 +382,77 @@ class MacroF1Scheme(BaseLogitsEvaluationScheme):
         minor = {
             "acc": acc,
             "f1_macro": f1_score(y_true=labels, y_pred=preds, average="macro"),
+        }
+        return Metrics(major=minor["f1_macro"], minor=minor)
+
+
+class FairScheme(BaseLogitsEvaluationScheme):
+    def get_labels_from_cache_and_examples(self, task, cache, examples):
+        return get_label_ids_from_cache(cache=cache)
+    
+    def get_accumulator(self):
+        return ConcatenateLogitsDemographicsAccumulator()
+
+    def get_preds_from_accumulator(self, task, accumulator):
+        logits = accumulator.get_accumulated()
+        return np.argmax(logits, axis=1)
+    
+    def compute_metrics_from_accumulator(
+        self, task, 
+        accumulator: ConcatenateLogitsAccumulator, 
+        tokenizer, 
+        labels: list,
+        demographic_groups: list,
+        number_classes: int,
+    ) -> Metrics:
+        preds = self.get_preds_from_accumulator(task=task, accumulator=accumulator)
+        demographics = accumulator.get_demographics()
+        return self.compute_metrics_from_preds_and_labels(
+            preds=preds, 
+            labels=labels, 
+            demographics=demographics,
+            demographic_groups=demographic_groups,
+            number_classes=number_classes
+            )
+
+    @classmethod
+    def compute_metrics_from_preds_and_labels(cls, preds, labels, demographics, demographic_groups, number_classes):
+        # noinspection PyUnresolvedReferences
+        acc = float((preds == labels).mean())
+        labels = np.array(labels)
+        count_positive, count_total = fairness.compute_multiclass_hard_batch_counts_per_label(
+            protectedAttributes=demographics,
+            predictions=preds,
+            intersectGroups=demographic_groups,
+            num_classes=number_classes,
+            device="cpu",
+            labels=labels
+        )
+        eq_odds = fairness.multiclass_equalized_odds(
+                count_pos=count_positive,
+                count_total=count_total,
+                num_classes=number_classes,
+                num_groups=len(demographic_groups),
+                base_fairness=0.0,
+                concentration=0.001
+            ).item()
+        count_positive, count_total = fairness.compute_multiclass_hard_batch_counts(
+            protectedAttributes=demographics,
+            predictions=preds,
+            intersectGroups=demographic_groups,
+            num_classes=number_classes,
+            device="cpu"
+        )
+        e_diff = fairness.multiclass_differential_fairness(
+            count_pos=count_positive,
+            count_total=count_total,
+            num_classes=number_classes
+        ).item()
+        minor = {
+            "acc": acc,
+            "f1_macro": f1_score(y_true=labels, y_pred=preds, average="macro"),
+            "equalized_odds": eq_odds,
+            "differential_fairness": e_diff
         }
         return Metrics(major=minor["f1_macro"], minor=minor)
 
@@ -1144,7 +1244,7 @@ def get_evaluation_scheme_for_task(task) -> BaseEvaluationScheme:
     elif isinstance(task, tasks_retrieval.TatoebaTask):
         return TatoebaEvaluationScheme()
     elif isinstance(task, ClassificationTask):
-        return MacroF1Scheme()
+        return FairScheme()
     else:
         raise KeyError(task)
 
