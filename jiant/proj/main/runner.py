@@ -146,6 +146,8 @@ class JiantRunner:
                 local_rank=self.rparams.local_rank,
                 return_preds=return_preds,
                 verbose=verbose,
+                demographic_groups=self.jiant_task_container.task_dict[task_name].demographics,
+                number_classes=len(self.jiant_task_container.task_dict[task_name].LABELS),
             )
         return evaluate_dict
 
@@ -267,6 +269,8 @@ def run_val(
     local_rank,
     return_preds=False,
     verbose=True,
+    demographic_groups=[],
+    number_classes=0
 ):
     # Reminder:
     #   val_dataloader contains mostly PyTorch-relevant info
@@ -317,6 +321,8 @@ def run_val(
             accumulator=eval_accumulator,
             labels=val_labels,
             tokenizer=tokenizer,
+            demographic_groups=demographic_groups,
+            number_classes=number_classes
         ),
     }
     if return_preds:
