@@ -434,7 +434,7 @@ class FairScheme(BaseLogitsEvaluationScheme):
                 num_classes=number_classes,
                 num_groups=len(demographic_groups),
                 base_fairness=0.0,
-                concentration=0.001
+                concentration=1.0
             ).item()
         count_positive, count_total = fairness.compute_multiclass_hard_batch_counts(
             protectedAttributes=demographics,
@@ -446,7 +446,9 @@ class FairScheme(BaseLogitsEvaluationScheme):
         e_diff = fairness.multiclass_differential_fairness(
             count_pos=count_positive,
             count_total=count_total,
-            num_classes=number_classes
+            num_classes=number_classes,
+            base_fairness=0.0,
+            concentration=1.0
         ).item()
         minor = {
             "acc": acc,

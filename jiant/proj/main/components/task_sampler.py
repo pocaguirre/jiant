@@ -1,7 +1,8 @@
 import abc
 import numexpr
 import numpy as np
-
+import torch.nn.functional as F
+import torch
 from typing import Union, Optional, Dict
 
 
@@ -38,6 +39,33 @@ class ProportionalMultiTaskSampler(BaseMultiTaskSampler):
         self.task_names = list(task_to_num_examples_dict.keys())
         self.task_num_examples = np.array([task_to_num_examples_dict[k] for k in self.task_names])
         self.task_p = self.task_num_examples / self.task_num_examples.sum()
+
+    def pop(self):
+        task_name = self.rng.choice(self.task_names, p=self.task_p)
+        return task_name, self.task_dict[task_name]
+
+
+class DynamicMultiTaskSampler(BaseMultiTaskSampler):
+    def __init__(
+        self,
+        task_dict: dict,
+        rng: Union[int, np.random.RandomState],
+        task_to_num_examples_dict: dict,
+    ):
+        super().__init__(task_dict=task_dict, rng=rng)
+        assert task_dict.keys() == task_to_num_examples_dict.keys()
+        self.task_to_examples_dict = task_to_num_examples_dict
+        self.task_names = list(task_to_num_examples_dict.keys())
+        self.task_num_examples = np.array([task_to_num_examples_dict[k] for k in self.task_names])
+        self.task_p = self.task_num_examples / self.task_num_examples.sum()
+
+    def update(self, evaluation_dict):
+        assert(len(self.task_names) == len(evaluation_dict))
+        scores = np.array(
+            [evaluation_dict[t]['metrics'].major for t in self.task_names]
+        )
+        scores = np.mean(scores) - scores
+        self.task_p = F.softmax(torch.tensor(scores),dim=0).numpy()
 
     def pop(self):
         task_name = self.rng.choice(self.task_names, p=self.task_p)
@@ -201,6 +229,13 @@ def create_task_sampler(
                 "task_to_unnormalized_prob_funcs_dict"
             ],
             max_steps=sampler_config["max_steps"],
+        )
+    elif sampler_type == "DynamicMultiTaskSampler":
+        assert len(sampler_config) == 1
+        return DynamicMultiTaskSampler(
+            task_dict=task_dict,
+            rng=rng,
+            task_to_num_examples_dict=task_to_num_examples_dict,
         )
     else:
         raise KeyError(sampler_type)
