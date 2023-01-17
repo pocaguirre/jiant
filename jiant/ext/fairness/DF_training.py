@@ -219,6 +219,20 @@ def computeMulticlassBatchCountsPerLabel(protectedAttributes, predictions, inter
     return count_pos_k, count_tot_k
 
 
+def computeMulticlassHardCountsPerLabel(protectedAttributes, predictions, intersectGroups, num_classes, device, labels=None):
+    # intersectGroups should be pre-defined so that stochastic update of p(y_hat|S,y=1)
+    # can be maintained correctly among different batches
+    count_pos_k = torch.ones(
+        (len(intersectGroups), num_classes, num_classes), device=device)
+    count_tot_k = torch.ones((len(intersectGroups), num_classes), device=device)
+    for i in range(len(protectedAttributes)):
+        index = np.where((np.array(intersectGroups) ==
+                         protectedAttributes[i]))[0][0]
+        count_tot_k[index, labels[i]] = count_tot_k[index, labels[i]] + 1
+        count_pos_k[index, labels[i], predictions[i]] = count_pos_k[index, labels[i], predictions[i]] + 1
+    return count_pos_k, count_tot_k
+
+
 #################################
 ## HARD COUNTS                 ##
 #################################
