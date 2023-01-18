@@ -13,6 +13,30 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.autograd import Variable
+from sklearn.metrics import f1_score
+
+#################################
+## Relative F1                 ##
+#################################
+
+
+def demographic_wise_f1(preds, labels, demographics, demographic_groups):
+    scores = {}
+    min_s = 1.0
+    max_s = 0
+    for dem in demographic_groups:
+        index = [True if dem == g else False for g in demographics]
+        score = f1_score(labels[index], preds[index], average="macro")
+        scores[dem] = score
+        if score < min_s:
+            min_s = score
+        if score > max_s:
+            max_s = score
+    scores['f1_diff'] = max_s - min_s
+    return scores
+
+
+
 
 #################################
 ## MULTICLASS STOCASTIC FUNCS  ##
@@ -266,9 +290,9 @@ def compute_multiclass_hard_batch_counts_per_label(
     ):
     # intersectGroups should be pre-defined so that stochastic update of p(y_hat|S,y=1)
     # can be maintained correctly among different batches
-    count_pos_k = torch.zeros(
+    count_pos_k = torch.ones(
         (len(intersectGroups), num_classes, num_classes), device=device)
-    count_tot_k = torch.zeros(
+    count_tot_k = torch.ones(
         (len(intersectGroups), num_classes), device=device)
     for i in range(len(protectedAttributes)):
         index = np.where((np.array(intersectGroups) ==
