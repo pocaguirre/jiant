@@ -15,7 +15,7 @@ from jiant.tasks.core import (
 from jiant.tasks.lib.templates.shared import single_sentence_featurize, labels_to_bimap
 from jiant.utils.python.io import read_jsonl
 
-#TODO: create metadata (demographics)
+
 @dataclass
 class Example(BaseExample):
     guid: str
