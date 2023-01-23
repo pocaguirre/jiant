@@ -184,7 +184,7 @@ class JiantMetarunner(AbstractMetarunner):
     def done_training(self):
         if self.save_last_model:
             self.save_last_model_with_metadata()
-        self.eval_save()
+        # self.eval_save()
         if self.load_best_model and self.best_state_dict is not None:
             if self.verbose:
                 print("Loading Best")
@@ -225,7 +225,7 @@ class JiantMetarunner(AbstractMetarunner):
         self.num_evals_since_improvement += 1
         val_results_dict = self.runner.run_val(
             task_name_list=self.runner.jiant_task_container.task_run_config.train_val_task_list,
-            use_subset=True,
+            use_subset=False,
         )
         aggregated_major = jiant_task_sampler.compute_aggregate_major_metrics_from_results_dict(
             metrics_aggregator=self.runner.jiant_task_container.metrics_aggregator,

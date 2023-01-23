@@ -181,6 +181,7 @@ def create_jiant_task_container(
     taskmodels_config: Dict,
     task_run_config: Dict,
     verbose: bool = True,
+    seed: int = 42,
 ) -> JiantTaskContainer:
     """Read and interpret config files, initialize configuration objects, return JiantTaskContainer.
 
@@ -219,6 +220,7 @@ def create_jiant_task_container(
             task_name: task_dict[task_name] for task_name in task_run_config.train_task_list
         },
         task_to_num_examples_dict=num_train_examples_dict,
+        rng=seed
     )
     metric_aggregator = jiant_task_sampler.create_metric_aggregator(
         metric_aggregator_config=metric_aggregator_config,
@@ -236,7 +238,7 @@ def create_jiant_task_container(
 
 
 def create_jiant_task_container_from_dict(
-    jiant_task_container_config_dict: Dict, verbose: bool = True
+    jiant_task_container_config_dict: Dict, verbose: bool = True, seed: int = 42
 ) -> JiantTaskContainer:
     return create_jiant_task_container(
         task_config_path_dict=jiant_task_container_config_dict["task_config_path_dict"],
@@ -248,13 +250,15 @@ def create_jiant_task_container_from_dict(
         task_run_config=jiant_task_container_config_dict["task_run_config"],
         metric_aggregator_config=jiant_task_container_config_dict["metric_aggregator_config"],
         verbose=verbose,
+        seed=seed
     )
 
 
 def create_jiant_task_container_from_json(
-    jiant_task_container_config_path: str, verbose: bool = True
+    jiant_task_container_config_path: str, verbose: bool = True, seed=42
 ) -> JiantTaskContainer:
     return create_jiant_task_container_from_dict(
         jiant_task_container_config_dict=py_io.read_json(jiant_task_container_config_path),
         verbose=verbose,
+        seed=seed
     )
