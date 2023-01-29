@@ -76,7 +76,7 @@ def demographic_wise_everything(preds, labels, demographics, demographic_groups)
         parity = sum(preds[index]) / sum(labels[index])
         scores['recall'][dem] = recall
         scores["specificity"][dem] = specificity
-        scores["parity"][dem] = parity
+        scores["parity"][dem] = parity.tolist()[0]
     scores['recall']['diff'] = np.max([r for d, r in scores['recall'].items()]) - np.min([r for d, r in scores['recall'].items()])
     scores['specificity']['diff'] = np.max([r for d, r in scores['specificity'].items()]) - np.min([r for d, r in scores['specificity'].items()])
     scores['parity']['diff'] = np.max(
