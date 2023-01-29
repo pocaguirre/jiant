@@ -14,6 +14,8 @@ from jiant.tasks.core import (
 )
 from jiant.tasks.lib.templates.shared import single_sentence_featurize, labels_to_bimap
 from jiant.utils.python.io import read_jsonl
+from torch.nn import CrossEntropyLoss
+from jiant.ext.fairness import DF_training as fairness
 
 
 @dataclass
@@ -92,6 +94,8 @@ class ClassificationTask(Task):
             self.demographics = demographics
         if train_size != 0:
             self.train_size = train_size
+        self.loss = CrossEntropyLoss()
+        self.fairness_loss_dict = fairness.FAIR_LOSS_DICT["multiclass"]
 
 
     def get_train_examples(self):

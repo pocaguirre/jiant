@@ -250,7 +250,7 @@ class SimpleAPIMultiTaskConfigurator(zconf.RunConfig):
     eval_batch_multiplier = zconf.attr(type=int, default=None)
     eval_batch_size = zconf.attr(type=int, default=None)
     gradient_accumulation_steps = zconf.attr(type=int, default=1)
-    eval_subset_num = zconf.attr(type=int, default=500)
+    eval_subset_num = zconf.attr(type=int, default=100)
     epochs = zconf.attr(type=int, default=None)
     max_steps = zconf.attr(type=int, default=None)
     num_gpus = zconf.attr(type=int, default=None)

@@ -57,6 +57,7 @@ class JiantTaskContainer:
     taskmodels_config: TaskmodelsConfig
     task_run_config: TaskRunConfig
     metrics_aggregator: jiant_task_sampler.BaseMetricAggregator
+    seed:int
 
 
 def create_task_dict(task_config_dict: dict, verbose: bool = True) -> Dict[str, Task]:
@@ -234,6 +235,7 @@ def create_jiant_task_container(
         taskmodels_config=taskmodels_config,
         task_run_config=task_run_config,
         metrics_aggregator=metric_aggregator,
+        seed=seed
     )
 
 

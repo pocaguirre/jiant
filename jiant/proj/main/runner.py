@@ -2,6 +2,7 @@ from typing import Dict
 from dataclasses import dataclass
 
 import torch
+import numpy as np
 
 import jiant.tasks.evaluate as evaluate
 import jiant.utils.torch_utils as torch_utils
@@ -15,6 +16,7 @@ from jiant.shared.runner import (
 )
 from jiant.utils.display import maybe_tqdm
 from jiant.utils.python.datastructures import InfiniteYield, ExtendedDataClassMixin
+from torch.nn import CrossEntropyLoss
 
 
 @dataclass
@@ -100,15 +102,22 @@ class JiantRunner:
         loss_val = 0
         for i in range(task_specific_config.gradient_accumulation_steps):
             batch, batch_metadata = train_dataloader_dict[task_name].pop()
+            if type(batch.label_id) == list:
+                batch.label_id = torch.tensor(batch.label_id, dtype=torch.long)
             batch = batch.to(self.device)
             model_output = wrap_jiant_forward(
                 jiant_model=self.jiant_model,
                 batch=batch,
                 task=task,
-                compute_loss=True,
+                compute_loss=False,
+            )
+            loss = task.loss(
+                model_output.logits.view(-1,
+                                         len(task.LABELS)),
+                batch.label_id.view(-1, len(task.LABELS)).float(),
             )
             loss = self.complex_backpropagate(
-                loss=model_output.loss,
+                loss=loss,
                 gradient_accumulation_steps=task_specific_config.gradient_accumulation_steps,
             )
             loss_val += loss.item()
@@ -195,6 +204,7 @@ class JiantRunner:
                 task=task,
                 eval_batch_size=task_specific_config.eval_batch_size,
                 subset_num=task_specific_config.eval_subset_num if use_subset else None,
+                seed=self.jiant_task_container.seed
             )
         return val_dataloader_dict
 
@@ -213,6 +223,9 @@ class JiantRunner:
             val_labels = val_labels_cache.get_all()
             if use_subset:
                 val_labels = val_labels[: task_specific_config.eval_subset_num]
+            if hasattr(self.jiant_task_container.task_dict[task_name], 'val_note_id_subset'):
+                val_labels = np.array(val_labels)[
+                    self.jiant_task_container.task_dict[task_name].val_note_id_subset]
             val_labels_dict[task_name] = val_labels
         return val_labels_dict
 
@@ -286,6 +299,8 @@ def run_val(
     for step, (batch, batch_metadata) in enumerate(
         maybe_tqdm(val_dataloader, desc=f"Eval ({task.name}, Val)", verbose=verbose)
     ):
+        if type(batch.label_id) == list:
+            batch.label_id = torch.tensor(batch.label_id, dtype=torch.long)
         batch = batch.to(device)
 
         with torch.no_grad():
@@ -293,10 +308,14 @@ def run_val(
                 jiant_model=jiant_model,
                 batch=batch,
                 task=task,
-                compute_loss=True,
+                compute_loss=False,
+            )
+            loss = task.loss(
+                model_output.logits.view(-1, number_classes),
+                batch.label_id.view(-1, len(task.LABELS)).float(),
             )
         batch_logits = model_output.logits.detach().cpu().numpy()
-        batch_loss = model_output.loss.mean().item()
+        batch_loss = loss.mean().item()
         total_eval_loss += batch_loss
         eval_accumulator.update(
             batch_logits=batch_logits,

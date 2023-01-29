@@ -13,7 +13,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.autograd import Variable
-from sklearn.metrics import f1_score
+from sklearn.metrics import f1_score, confusion_matrix, multilabel_confusion_matrix
 
 #################################
 ## Relative F1                 ##
@@ -36,10 +36,59 @@ def demographic_wise_f1(preds, labels, demographics, demographic_groups):
     return scores
 
 
+def demographic_wise_everything_multilabel(preds, labels, demographics, demographic_groups):
+    scores = {
+        "recall": {},
+        "specificity": {},
+        "parity": {}
+    }
+    for dem in demographic_groups:
+        index = [True if dem == g else False for g in demographics]
+        recalls = []
+        specs = []
+        pars = []
+        for i, some in enumerate(multilabel_confusion_matrix(labels[index], preds[index])):
+            tn, fp, fn, tp = some.ravel()
+            recalls.append(tp / (tp + fn))
+            specs.append(tn / (tn + fp))
+            pars.append(sum(preds[index, i]) / sum(labels[index, i]))
+        scores['recall'][dem] = recalls
+        scores["specificity"][dem] = specs
+        scores["parity"][dem] = pars
+    scores['recall']['diff'] = list(np.max([r for d, r in scores['recall'].items()], axis=0) - np.min([r for d, r in scores['recall'].items()], axis=0))
+    scores['specificity']['diff'] = list(np.max([r for d, r in scores['specificity'].items()], axis=0) - np.min([r for d, r in scores['specificity'].items()], axis=0))
+    scores['parity']['diff'] = list(np.max(
+        [r for d, r in scores['parity'].items()], axis=0) - np.min([r for d, r in scores['parity'].items()], axis=0))
+    return scores
+
+
+def demographic_wise_everything(preds, labels, demographics, demographic_groups):
+    scores = {
+        "recall": {},
+        "specificity": {},
+        "parity": {}
+    }
+    for dem in demographic_groups:
+        index = [True if dem == g else False for g in demographics]
+        tn, fp, fn, tp = confusion_matrix(labels[index], preds[index]).ravel()
+        recall = tp / (tp + fn)
+        specificity = tn / (tn + fp)
+        parity = sum(preds[index]) / sum(labels[index])
+        scores['recall'][dem] = recall
+        scores["specificity"][dem] = specificity
+        scores["parity"][dem] = parity
+    scores['recall']['diff'] = np.max([r for d, r in scores['recall'].items()]) - np.min([r for d, r in scores['recall'].items()])
+    scores['specificity']['diff'] = np.max([r for d, r in scores['specificity'].items()]) - np.min([r for d, r in scores['specificity'].items()])
+    scores['parity']['diff'] = np.max(
+        [r for d, r in scores['parity'].items()]) - np.min([r for d, r in scores['parity'].items()])
+    return scores
+
+
+
 
 
 #################################
-## MULTICLASS STOCASTIC FUNCS  ##
+## MULTICLASS STOCASTIC LOSSES ##
 #################################
 ## extends islam's code for    ##
 ## multiclass predictions      ##
@@ -80,8 +129,6 @@ def multiclass_equalized_opportunity_loss(stochasticModel,
         (stochasticModel.countTotal_hat + concentration)
     epsilonClass = differentialFairnessMulticlassOutcomeTrain(theta, num_classes)
     return torch.max(zeroTerm, (epsilonClass-base_fairness))
-
-   # Loss and optimizer
 
 
 def multiclass_equalized_odds_loss(stochasticModel,
@@ -131,10 +178,79 @@ def multiclass_equalized_odds_loss(stochasticModel,
     return torch.max(zeroTerm, (epsilonClass-base_fairness))
 
 
+#################################
+## BINARY STOCASTIC LOSSES     ##
+#################################
+## extends islam's code for    ##
+## binary predictions          ##
+#################################
+
+# Loss and optimizer
+def fairness_loss(stochasticModel, base_fairness=0.0, concentration=.1):
+    # DF-based penalty term
+    numClasses = 2
+    concentrationParameter = concentration
+    dirichletAlpha = concentrationParameter / numClasses
+    zeroTerm = torch.tensor(0.0)
+
+    theta = (stochasticModel.countClass_hat + dirichletAlpha) / \
+        (stochasticModel.countTotal_hat + concentrationParameter)
+    epsilonClass = differentialFairnessBinaryOutcomeTrain(theta)
+    return torch.max(zeroTerm, (epsilonClass - base_fairness))
+# Loss and optimizer
+
+
+def equalized_opportunity_loss(stochasticModel, base_fairness=0.0, concentration=.1):
+    # DF-based penalty term
+    dirichletAlpha = concentration / 2
+    zeroTerm = torch.tensor(0.0)
+
+    # Calculating TPR
+    TP = torch.zeros(stochasticModel.no_of_groups,
+                     dtype=torch.float, device=stochasticModel.countTotal_hat.device.type)
+    for g in range(stochasticModel.no_of_groups):
+        TP[g] = stochasticModel.countClass_hat[g, 1]
+    theta = (TP + dirichletAlpha) / \
+        (stochasticModel.countTotal_hat[:, 1] + concentration)
+    epsilonClass = differentialBinaryOutcomeTrain(theta)
+    return torch.max(zeroTerm, (epsilonClass - base_fairness))
+
+
+def equalized_odds_loss(stochasticModel, base_fairness=0.0, concentration=.1):
+    # DF-based penalty term
+    dirichletAlpha = concentration / 2
+    zeroTerm = torch.tensor(0.0)
+
+    # Calculating TPR
+    TP = torch.zeros(stochasticModel.no_of_groups,
+                     dtype=torch.float, device=stochasticModel.countTotal_hat.device.type)
+    for g in range(stochasticModel.no_of_groups):
+        TP[g] = stochasticModel.countClass_hat[g, 1]
+    FP = torch.zeros((stochasticModel.no_of_groups), dtype=torch.float,
+                     device=stochasticModel.countTotal_hat.device.type)
+    for g in range(stochasticModel.no_of_groups):
+        FP[g] = stochasticModel.countClass_hat[g, 0]
+    theta_tpr = (TP + dirichletAlpha) / \
+        (stochasticModel.countTotal_hat[:, 1] + concentration)
+    epsilonClass = differentialBinaryOutcomeTrain(theta_tpr)
+    theta_fpr = (FP + dirichletAlpha) / \
+        (stochasticModel.countTotal_hat[:, 0] + concentration)
+    epsilonClass = epsilonClass + differentialBinaryOutcomeTrain(theta_fpr)
+    return torch.max(zeroTerm, (epsilonClass - base_fairness))
+
+
+
 FAIR_LOSS_DICT = {
-    "differential_fairness": multiclass_fairness_loss,
-    "equalized_opportunity": multiclass_equalized_opportunity_loss,
-    "equalized_odds": multiclass_equalized_odds_loss 
+    "multiclass":{
+        "differential_fairness": multiclass_fairness_loss,
+        "equalized_opportunity": multiclass_equalized_opportunity_loss,
+        "equalized_odds": multiclass_equalized_odds_loss 
+    },
+    "binary":{
+        "differential_fairness": fairness_loss,
+        "equalized_opportunity": equalized_opportunity_loss,
+        "equalized_odds": equalized_odds_loss
+    }
 }
 
 #################################
@@ -173,6 +289,30 @@ def multiclass_equalized_odds(
     return torch.max(zeroTerm, (epsilonClass - base_fairness))
 
 
+def multiclass_equalized_opportunity(
+        count_pos,
+        count_total,
+        num_classes,
+        num_groups,
+        base_fairness=0.0,
+        concentration=.1,
+        device='cpu'
+    ):
+    # DF-based penalty term
+    dirichletAlpha = concentration / num_classes
+    zeroTerm = torch.tensor(0.0)
+
+    # Calculating TP counts
+    TP = torch.zeros((num_groups, num_classes), dtype=torch.float, device=device)
+    for g in range(num_groups):
+        for k in range(num_classes):
+            TP[g, k] = count_pos[g, k, k]
+
+    theta_tpr = (TP + dirichletAlpha) / (count_total + concentration)
+    epsilonClass = differentialFairnessMulticlassOutcomeTrain(theta_tpr, num_classes)
+    return torch.max(zeroTerm, (epsilonClass - base_fairness))
+
+
 def multiclass_differential_fairness(
         count_pos,
         count_total,
@@ -189,6 +329,76 @@ def multiclass_differential_fairness(
     epsilonClass = differentialFairnessMulticlassOutcomeTrain(theta.T, num_classes)
     return torch.max(zeroTerm, (epsilonClass - base_fairness))
 
+#################################
+## Binary HARD COUNT FUNC  ##
+#################################
+
+
+def binary_equalized_odds(
+    count_pos,
+    count_total,
+    num_groups,
+    base_fairness=0.0,
+    concentration=.1,
+    device='cpu'
+):
+    # DF-based penalty term
+    dirichletAlpha = concentration / 2
+    zeroTerm = torch.tensor(0.0)
+
+    # Calculating TP counts
+    TP = torch.zeros((num_groups), dtype=torch.float, device=device)
+    FP = torch.zeros((num_groups), dtype=torch.float, device=device)
+    N = torch.zeros((num_groups), dtype=torch.float, device=device)
+    for g in range(num_groups):
+        TP[g] = count_pos[g, 1]
+        FP[g] = count_pos[g, 0]
+        N[g] = count_total[g, 0]
+
+    theta_tpr = (TP + dirichletAlpha) / (count_total[:, 1] + concentration)
+    epsilonClass = differentialBinaryOutcomeTrain(theta_tpr)
+    theta_fpr = (FP + dirichletAlpha) / (N + concentration)
+    epsilonClass = epsilonClass + \
+        differentialBinaryOutcomeTrain(theta_fpr)
+    return torch.max(zeroTerm, (epsilonClass - base_fairness))
+
+
+def binary_equalized_opportunity(
+    count_pos,
+    count_total,
+    num_groups,
+    base_fairness=0.0,
+    concentration=.1,
+    device='cpu'
+):
+    # DF-based penalty term
+    dirichletAlpha = concentration / 2
+    zeroTerm = torch.tensor(0.0)
+
+    # Calculating TP counts
+    TP = torch.zeros((num_groups), dtype=torch.float, device=device)
+    for g in range(num_groups):
+        TP[g] = count_pos[g, 1]
+
+    theta_tpr = (TP + dirichletAlpha) / (count_total[:, 1] + concentration)
+    epsilonClass = differentialBinaryOutcomeTrain(theta_tpr)
+    return torch.max(zeroTerm, (epsilonClass - base_fairness))
+
+
+def binary_differential_fairness(
+        count_pos,
+        count_total,
+        base_fairness=0.0,
+        concentration=.1,
+):
+    # DF-based penalty term
+    dirichletAlpha = concentration / 2
+    zeroTerm = torch.tensor(0.0)
+
+    theta = (count_pos + dirichletAlpha) / \
+        (count_total + concentration)
+    epsilonClass = differentialFairnessBinaryOutcomeTrain(theta)
+    return torch.max(zeroTerm, (epsilonClass - base_fairness))
 
 #################################
 ## MULTICLASS COUNT FUNCS      ##
@@ -302,6 +512,47 @@ def compute_multiclass_hard_batch_counts_per_label(
     return count_pos_k, count_tot_k
 
 
+def compute_binary_hard_batch_counts_per_label(
+        protectedAttributes, 
+        predictions, 
+        intersectGroups, 
+        device, 
+        labels=None
+    ):
+    # intersectGroups should be pre-defined so that stochastic update of p(y_hat|S,y=1)
+    # can be maintained correctly among different batches
+    count_pos_k = torch.ones(
+        (len(intersectGroups), 2), device=device)
+    count_tot_k = torch.ones(
+        (len(intersectGroups), 2), device=device)
+    for i in range(len(protectedAttributes)):
+        index = np.where((np.array(intersectGroups) ==
+                         protectedAttributes[i]))[0][0]
+        count_tot_k[index, labels[i]] = count_tot_k[index, labels[i]] + 1
+        count_pos_k[index, labels[i]] = count_pos_k[index, labels[i]] + predictions[i]
+    return count_pos_k, count_tot_k
+
+
+def compute_binary_hard_batch_counts(
+        protectedAttributes, 
+        predictions, 
+        intersectGroups, 
+        device
+    ):
+    # intersectGroups should be pre-defined so that stochastic update of p(y_hat|S,y=1)
+    # can be maintained correctly among different batches
+    count_pos_k = torch.ones(
+        (len(intersectGroups)), device=device)
+    count_tot_k = torch.ones(
+        (len(intersectGroups)), device=device)
+    for i in range(len(protectedAttributes)):
+        index = np.where((np.array(intersectGroups) ==
+                         protectedAttributes[i]))[0][0]
+        count_tot_k[index] = count_tot_k[index] + 1
+        count_pos_k[index] = count_pos_k[index] + predictions[i]
+    return count_pos_k, count_tot_k
+
+
 class stochasticCount(nn.Module):
     def __init__(self, N, batch_size, rho=.1):
         super(stochasticCount, self).__init__()
@@ -346,6 +597,19 @@ class stochasticMulticlassPerLabelCountModel(stochasticCount):
         self.countClass_hat = self.countClass_hat * \
             (N/(batch_size*no_of_groups))
         self.countTotal_hat = self.countTotal_hat*(N/batch_size)
+    
+
+class stochasticBinaryPerLabelCountModel(stochasticCount):
+    def __init__(self, no_of_groups, N, batch_size, rho=.1, device='cpu'):
+        super(stochasticBinaryPerLabelCountModel, self).__init__(N, batch_size, rho=rho)
+        self.countClass_hat = torch.ones((no_of_groups, 2), device=device)
+        self.countTotal_hat = torch.ones((no_of_groups, 2), device=device)
+
+        self.countClass_hat = self.countClass_hat * (N / (batch_size * no_of_groups))
+        self.countTotal_hat = self.countTotal_hat * (N / batch_size)
+
+        self.no_of_groups = no_of_groups
+
 
 #################################
 ## OLD FUNCTIONS               ##
@@ -408,20 +672,6 @@ def get_counts(preds, groups, gold, num_classes, num_groups):
 ## BINARY STOCASTIC FUNCS      ##
 #################################
 
-# Loss and optimizer
-def fairness_loss(base_fairness, stochasticModel):
-    # DF-based penalty term
-    numClasses = 2
-    concentrationParameter = 1.0
-    dirichletAlpha = concentrationParameter/numClasses
-    zeroTerm = torch.tensor(0.0)
-
-    theta = (stochasticModel.countClass_hat + dirichletAlpha) / \
-        (stochasticModel.countTotal_hat + concentrationParameter)
-    epsilonClass = differentialFairnessBinaryOutcomeTrain(theta)
-    return torch.max(zeroTerm, (epsilonClass-base_fairness))
-# Loss and optimizer
-
 
 def sf_loss(base_fairness, stochasticModel):
     numClasses = 2
@@ -473,6 +723,24 @@ def differentialFairnessBinaryOutcomeTrain(probabilitiesOfPositive):
     return epsilon
 
 
+def differentialBinaryOutcomeTrain(probabilitiesOfPositive):
+    # input: probabilitiesOfPositive = positive p(y|S) from ML algorithm
+    # output: epsilon = differential fairness measure
+    epsilonPerGroup = torch.zeros(
+        len(probabilitiesOfPositive), dtype=torch.float)
+    for i in range(len(probabilitiesOfPositive)):
+        epsilon = torch.tensor(0.0)  # initialization of DF
+        for j in range(len(probabilitiesOfPositive)):
+            if i == j:
+                continue
+            else:
+                epsilon = torch.max(epsilon, torch.abs(torch.log(probabilitiesOfPositive[i]) - torch.log(
+                    probabilitiesOfPositive[j])))  # ratio of probabilities of positive outcome
+        epsilonPerGroup[i] = epsilon  # DF per group
+    epsilon = torch.max(epsilonPerGroup)  # overall DF of the algorithm
+    return epsilon
+
+
 def subgroupFairnessTrain(probabilitiesOfPositive, alphaSP):
     # input: probabilitiesOfPositive = Pr[D(X)=1|g(x)=1]
     #        alphaG = Pr[g(x)=1]
@@ -500,6 +768,22 @@ def computeBatchCounts(protectedAttributes, intersectGroups, predictions):
             (intersectGroups == protectedAttributes[i]).all(axis=1))[0][0]
         countsTotal[index] = countsTotal[index] + 1
         countsClassOne[index] = countsClassOne[index] + predictions[i]
+    return countsClassOne, countsTotal
+
+
+# stochastic count updates
+def computeBatchCountsPerLabel(protectedAttributes, intersectGroups, predictions, labels, device='cpu'):
+    # intersectGroups should be pre-defined so that stochastic update of p(y|S)
+    # can be maintained correctly among different batches
+
+    # compute counts for each intersectional group
+    countsClassOne = torch.zeros((len(intersectGroups), 2), device=device)
+    countsTotal = torch.zeros((len(intersectGroups), 2), device=device)
+    for i in range(len(predictions)):
+        index = np.where(
+            (np.array(intersectGroups) == protectedAttributes[i]))[0][0]
+        countsTotal[index, labels[i]] = countsTotal[index, labels[i]] + 1
+        countsClassOne[index, labels[i]] = countsClassOne[index, labels[i]] + predictions[i]
     return countsClassOne, countsTotal
 
 

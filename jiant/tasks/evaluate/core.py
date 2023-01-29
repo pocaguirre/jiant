@@ -10,11 +10,13 @@ import torch
 
 from scipy.stats import pearsonr
 from scipy.stats import spearmanr
-from sklearn.metrics import f1_score
+from sklearn.metrics import f1_score, hamming_loss
 from sklearn.metrics import matthews_corrcoef
 from typing import Dict
 from typing import List
 from jiant.tasks.lib.classification import ClassificationTask
+from jiant.tasks.lib.mimic_mort import InHospitalMortalityTask
+from jiant.tasks.lib.mimic_pheno  import PhenotypingTask
 from jiant.ext.fairness import DF_training as fairness
 
 import jiant.shared.model_resolution as model_resolution
@@ -100,6 +102,45 @@ class ConcatenateLogitsDemographicsAccumulator(BaseAccumulator):
 
     def get_accumulated(self):
         all_logits = np.concatenate(self.logits_list)
+        return all_logits
+
+
+class ConcatenateLogitsMimicAccumulator(BaseAccumulator):
+    def __init__(self):
+        self.logits_list = []
+        self.notes_list = {}
+        self.demographics = {}
+        self.guid_list = []
+
+    def merge_probs(self, probs, c):
+        return (np.max(probs, axis=0) + np.mean(probs, axis=0)*len(probs)/float(c))/(1+len(probs)/float(c))
+
+    def update(self, batch_logits, batch_loss, batch, batch_metadata):
+        batch_noteids = batch_metadata.get("noteid")
+        for note_id, logit, demo in zip(batch_noteids, batch_logits, batch_metadata.get("demographics")):
+            if note_id in self.notes_list:
+                assert(demo == self.demographics[note_id])
+                self.notes_list[note_id].append(logit)
+            else:
+                self.notes_list[note_id] = [logit]
+                self.demographics[note_id] = demo
+        batch_guid = batch_metadata.get("guid")
+        if batch_guid is not None:
+            self.guid_list.append(batch_guid)
+
+    def get_guids(self):
+        if self.guid_list:
+            return np.concatenate(self.guid_list)
+        else:
+            return None
+    
+    def get_demographics(self):
+        return np.array(list(self.demographics.values()))
+
+    def get_accumulated(self):
+        all_logits = []
+        for note_id, probs in self.notes_list.items():
+            all_logits.append(self.merge_probs(probs, c=2))
         return all_logits
 
 
@@ -385,6 +426,155 @@ class MacroF1Scheme(BaseLogitsEvaluationScheme):
         }
         return Metrics(major=minor["f1_macro"], minor=minor)
 
+
+class MimicMortScheme(BaseLogitsEvaluationScheme):
+    def get_labels_from_cache_and_examples(self, task, cache, examples):
+        return task.get_val_labels(cache=cache)
+    
+    def get_accumulator(self):
+        return ConcatenateLogitsMimicAccumulator()
+
+    def get_preds_from_accumulator(self, task, accumulator):
+        logits = accumulator.get_accumulated()
+        return torch.sigmoid(torch.tensor(logits)).round().numpy()
+    
+    def compute_metrics_from_accumulator(
+        self, task, 
+        accumulator: ConcatenateLogitsMimicAccumulator, 
+        tokenizer, 
+        labels: list,
+        demographic_groups: list,
+        number_classes: int,
+    ) -> Metrics:
+        preds = self.get_preds_from_accumulator(task=task, accumulator=accumulator)
+        demographics = accumulator.get_demographics()
+        return self.compute_metrics_from_preds_and_labels(
+            preds=preds, 
+            labels=labels, 
+            demographics=demographics,
+            demographic_groups=demographic_groups,
+            number_classes=number_classes
+            )
+
+    @classmethod
+    def compute_metrics_from_preds_and_labels(cls, preds, labels, demographics, demographic_groups, number_classes):
+        # noinspection PyUnresolvedReferences
+        acc = float((preds == labels).mean())
+        labels = np.array(labels)
+        count_positive, count_total = fairness.compute_binary_hard_batch_counts_per_label(
+            protectedAttributes=demographics,
+            predictions=preds,
+            intersectGroups=demographic_groups,
+            device="cpu",
+            labels=labels
+        )
+        eq_odds= fairness.binary_equalized_odds(
+                count_pos=count_positive,
+                count_total=count_total,
+                num_groups=len(demographic_groups),
+                base_fairness=0.0,
+                concentration=0.0
+            ).item()
+        count_positive, count_total = fairness.compute_binary_hard_batch_counts(
+            protectedAttributes=demographics,
+            predictions=preds,
+            intersectGroups=demographic_groups,
+            device="cpu"
+        )
+        e_diff = fairness.binary_differential_fairness(
+            count_pos=count_positive,
+            count_total=count_total,
+            base_fairness=0.0,
+            concentration=1.0
+        ).item()
+        minor = {
+            "acc": acc,
+            "f1_macro": f1_score(y_true=labels, y_pred=preds),
+            "equalized_odds": eq_odds,
+            "differential_fairness": e_diff,
+            "score_diffs": fairness.demographic_wise_everything(
+                preds, labels, demographics, demographic_groups
+            )
+        }
+        return Metrics(major=minor["f1_macro"], minor=minor)
+
+
+
+class MimicPhenoScheme(BaseLogitsEvaluationScheme):
+    def get_labels_from_cache_and_examples(self, task, cache, examples):
+        return task.get_val_labels(cache=cache)
+    
+    def get_accumulator(self):
+        return ConcatenateLogitsMimicAccumulator()
+
+    def get_preds_from_accumulator(self, task, accumulator):
+        logits = accumulator.get_accumulated()
+        return torch.sigmoid(torch.tensor(logits)).round().numpy()
+    
+    def compute_metrics_from_accumulator(
+        self, task, 
+        accumulator: ConcatenateLogitsMimicAccumulator, 
+        tokenizer, 
+        labels: list,
+        demographic_groups: list,
+        number_classes: int,
+    ) -> Metrics:
+        preds = self.get_preds_from_accumulator(task=task, accumulator=accumulator)
+        demographics = accumulator.get_demographics()
+        return self.compute_metrics_from_preds_and_labels(
+            preds=preds, 
+            labels=labels, 
+            demographics=demographics,
+            demographic_groups=demographic_groups,
+            number_classes=number_classes
+            )
+
+    @classmethod
+    def compute_metrics_from_preds_and_labels(cls, preds, labels, demographics, demographic_groups, number_classes):
+        # noinspection PyUnresolvedReferences
+        labels = np.array(labels)
+        hamming = hamming_loss(labels, preds)
+        eq_odds_list = []
+        parity_list = []
+        for i in range(preds.shape[1]):
+            labs = labels[:, i]
+            pred = preds[:, i]
+            count_positive, count_total = fairness.compute_binary_hard_batch_counts_per_label(
+                protectedAttributes=demographics,
+                predictions=pred,
+                intersectGroups=demographic_groups,
+                device="cpu",
+                labels=labs
+            )
+            eq_odds_list.append(fairness.binary_equalized_odds(
+                    count_pos=count_positive,
+                    count_total=count_total,
+                    num_groups=len(demographic_groups),
+                    base_fairness=0.0,
+                    concentration=0.0
+                ).item())
+            count_positive, count_total = fairness.compute_binary_hard_batch_counts(
+                protectedAttributes=demographics,
+                predictions=pred,
+                intersectGroups=demographic_groups,
+                device="cpu"
+            )
+            parity_list.append(fairness.binary_differential_fairness(
+                count_pos=count_positive,
+                count_total=count_total,
+                base_fairness=0.0,
+                concentration=1.0
+            ).item())
+        minor = {
+            "hamming": hamming,
+            "f1_macro": f1_score(y_true=labels, y_pred=preds, average="samples"),
+            "equalized_odds": np.mean(eq_odds_list),
+            "differential_fairness": np.mean(parity_list),
+            "score_diffs": fairness.demographic_wise_everything_multilabel(
+                preds, labels, demographics, demographic_groups
+            )
+        }
+        return Metrics(major=minor["f1_macro"], minor=minor)
 
 class FairScheme(BaseLogitsEvaluationScheme):
     def get_labels_from_cache_and_examples(self, task, cache, examples):
@@ -1250,6 +1440,10 @@ def get_evaluation_scheme_for_task(task) -> BaseEvaluationScheme:
         return TatoebaEvaluationScheme()
     elif isinstance(task, ClassificationTask):
         return FairScheme()
+    elif isinstance(task, InHospitalMortalityTask):
+        return MimicMortScheme()
+    elif isinstance(task, PhenotypingTask):
+        return MimicPhenoScheme()
     else:
         raise KeyError(task)
 

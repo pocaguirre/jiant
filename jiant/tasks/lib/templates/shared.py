@@ -38,7 +38,7 @@ class InputSet:
 def single_sentence_featurize(
     guid: str,
     input_tokens: List[str],
-    label_id: int,
+    label_id,
     tokenizer,
     feat_spec: FeaturizationSpec,
     data_row_class,
@@ -211,7 +211,7 @@ def create_generic_data_row_from_tokens_and_segments(
     guid: str,
     unpadded_tokens: List[str],
     unpadded_segment_ids: List[int],
-    label_id: int,
+    label_id,
     tokenizer,
     feat_spec: FeaturizationSpec,
     data_row_class,

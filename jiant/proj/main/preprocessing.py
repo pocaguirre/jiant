@@ -6,6 +6,8 @@ import jiant.utils.torch_utils as torch_utils
 from jiant.tasks.core import FeaturizationSpec, TaskTypes
 from jiant.utils.display import maybe_tqdm, maybe_trange
 from jiant.tasks.lib.classification import ClassificationTask
+from jiant.tasks.lib.mimic_mort import InHospitalMortalityTask
+from jiant.tasks.lib.mimic_pheno import PhenotypingTask
 
 
 class MaxValidLengthRecorder:
@@ -152,6 +154,9 @@ def iter_chunk_convert_examples_to_dataset(
     ):
         metadata = {"example_id": i}
         if isinstance(task, ClassificationTask):
+            metadata['demographics'] = examples[i].demographics
+        if isinstance(task, (InHospitalMortalityTask, PhenotypingTask)):
+            metadata['noteid'] = examples[i].noteid
             metadata['demographics'] = examples[i].demographics
         yield {"data_row": data_row, "metadata": metadata}
 
