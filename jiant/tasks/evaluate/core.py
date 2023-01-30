@@ -10,7 +10,7 @@ import torch
 
 from scipy.stats import pearsonr
 from scipy.stats import spearmanr
-from sklearn.metrics import f1_score, hamming_loss
+from sklearn.metrics import f1_score, hamming_loss, accuracy_score, roc_auc_score, average_precision_score
 from sklearn.metrics import matthews_corrcoef
 from typing import Dict
 from typing import List
@@ -459,7 +459,7 @@ class MimicMortScheme(BaseLogitsEvaluationScheme):
     @classmethod
     def compute_metrics_from_preds_and_labels(cls, preds, labels, demographics, demographic_groups, number_classes):
         # noinspection PyUnresolvedReferences
-        acc = float((preds == labels).mean())
+        acc = accuracy_score(preds, labels)
         labels = np.array(labels)
         count_positive, count_total = fairness.compute_binary_hard_batch_counts_per_label(
             protectedAttributes=demographics,
@@ -490,6 +490,8 @@ class MimicMortScheme(BaseLogitsEvaluationScheme):
         minor = {
             "acc": acc,
             "f1_macro": f1_score(y_true=labels, y_pred=preds),
+            "AUROC": roc_auc_score(labels, preds),
+            "AUPRC": average_precision_score(labels, preds),
             "equalized_odds": eq_odds,
             "differential_fairness": e_diff,
             "score_diffs": fairness.demographic_wise_everything(
@@ -509,7 +511,7 @@ class MimicPhenoScheme(BaseLogitsEvaluationScheme):
 
     def get_preds_from_accumulator(self, task, accumulator):
         logits = accumulator.get_accumulated()
-        return torch.sigmoid(torch.tensor(logits)).round().numpy()
+        return torch.sigmoid(torch.tensor(np.array(logits))).round().numpy()
     
     def compute_metrics_from_accumulator(
         self, task, 
@@ -536,6 +538,9 @@ class MimicPhenoScheme(BaseLogitsEvaluationScheme):
         hamming = hamming_loss(labels, preds)
         eq_odds_list = []
         parity_list = []
+        auroc = roc_auc_score(labels, preds, average=None).tolist()
+        auprc = average_precision_score(labels, preds, average=None).tolist()
+        f1 = f1_score(y_true=labels, y_pred=preds, average=None).tolist()
         for i in range(preds.shape[1]):
             labs = labels[:, i]
             pred = preds[:, i]
@@ -567,9 +572,12 @@ class MimicPhenoScheme(BaseLogitsEvaluationScheme):
             ).item())
         minor = {
             "hamming": hamming,
-            "f1_macro": f1_score(y_true=labels, y_pred=preds, average="samples"),
+            "f1_macro": np.mean(f1),
+            "f1": {"score": np.mean(f1), "all": f1},
             "equalized_odds": np.mean(eq_odds_list),
             "differential_fairness": np.mean(parity_list),
+            "auroc": {"score": np.mean(auroc), "all": auroc},
+            "auprc": {"socre": np.mean(auprc), "all": auprc},
             "score_diffs": fairness.demographic_wise_everything_multilabel(
                 preds, labels, demographics, demographic_groups
             )

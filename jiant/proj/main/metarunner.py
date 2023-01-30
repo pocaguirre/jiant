@@ -225,7 +225,7 @@ class JiantMetarunner(AbstractMetarunner):
         self.num_evals_since_improvement += 1
         val_results_dict = self.runner.run_val(
             task_name_list=self.runner.jiant_task_container.task_run_config.train_val_task_list,
-            use_subset=False,
+            use_subset=True,
         )
         aggregated_major = jiant_task_sampler.compute_aggregate_major_metrics_from_results_dict(
             metrics_aggregator=self.runner.jiant_task_container.metrics_aggregator,

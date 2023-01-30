@@ -50,10 +50,12 @@ def get_eval_dataloader_from_cache(
     explicit_subset=None,
     seed=12
 ):
-    if subset_num is None and hasattr(task, "explicit_subset"):
+    if subset_num is not None and hasattr(task, "explicit_subset"):
         if task.explicit_subset is None:
             task.get_explicit_subset(seed=seed)
         explicit_subset = task.explicit_subset
+        subset_num = None
+        
     dataset = eval_cache.get_iterable_dataset(
         buffer_size=10000,
         shuffle=False,

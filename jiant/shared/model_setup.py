@@ -94,7 +94,7 @@ def create_optimizer_from_params(
     if optimizer_type == "adam":
         if verbose:
             print("Using AdamW")
-        optimizer = transformers.AdamW(
+        optimizer = torch.optim.AdamW(
             optimizer_grouped_parameters, lr=learning_rate, eps=optimizer_epsilon
         )
     elif optimizer_type == "radam":

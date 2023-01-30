@@ -221,11 +221,11 @@ class JiantRunner:
             task_specific_config = self.jiant_task_container.task_specific_configs[task_name]
             val_labels_cache = self.jiant_task_container.task_cache_dict[task_name]["val_labels"]
             val_labels = val_labels_cache.get_all()
-            if use_subset:
-                val_labels = val_labels[: task_specific_config.eval_subset_num]
-            if hasattr(self.jiant_task_container.task_dict[task_name], 'val_note_id_subset'):
+            if use_subset and hasattr(self.jiant_task_container.task_dict[task_name], 'val_note_id_subset'):
                 val_labels = np.array(val_labels)[
                     self.jiant_task_container.task_dict[task_name].val_note_id_subset]
+            elif use_subset:
+                val_labels = val_labels[: task_specific_config.eval_subset_num]
             val_labels_dict[task_name] = val_labels
         return val_labels_dict
 
