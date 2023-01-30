@@ -239,6 +239,90 @@ def equalized_odds_loss(stochasticModel, base_fairness=0.0, concentration=.1):
     return torch.max(zeroTerm, (epsilonClass - base_fairness))
 
 
+#################################
+## MULTILABEL STOCASTIC LOSSES ##
+#################################
+## extends islam's code for    ##
+## multilabel predictions      ##
+#################################
+
+# Loss and optimizer
+def multilabel_fairness_loss(stochasticModel, base_fairness=0.0, concentration=.1):
+    raise NotImplementedError()
+    # DF-based penalty term
+    numClasses = 2
+    concentrationParameter = concentration
+    dirichletAlpha = concentrationParameter / numClasses
+    zeroTerm = torch.tensor(0.0)
+
+    theta = (stochasticModel.countClass_hat + dirichletAlpha) / \
+        (stochasticModel.countTotal_hat + concentrationParameter)
+    epsilonClass = differentialFairnessBinaryOutcomeTrain(theta)
+    return torch.max(zeroTerm, (epsilonClass - base_fairness))
+# Loss and optimizer
+
+
+def multilabel_equalized_opportunity_loss(stochasticModel, base_fairness=0.0, concentration=.1):
+    raise NotImplementedError()
+    # DF-based penalty term
+    dirichletAlpha = concentration / 2
+    zeroTerm = torch.tensor(0.0)
+
+    # Calculating TPR
+    TP = torch.zeros(stochasticModel.no_of_groups,
+                     dtype=torch.float, device=stochasticModel.countTotal_hat.device.type)
+    for g in range(stochasticModel.no_of_groups):
+        TP[g] = stochasticModel.countClass_hat[g, 1]
+    theta = (TP + dirichletAlpha) / \
+        (stochasticModel.countTotal_hat[:, 1] + concentration)
+    epsilonClass = differentialBinaryOutcomeTrain(theta)
+    return torch.max(zeroTerm, (epsilonClass - base_fairness))
+
+
+def multilabel_equalized_odds_loss(stochasticModel, base_fairness=0.0, concentration=.1):
+    # DF-based penalty term
+    dirichletAlpha = concentration / 2
+    zeroTerm = torch.tensor(0.0)
+
+    # Calculating TPR
+    TP = torch.zeros((stochasticModel.no_of_groups,
+                     stochasticModel.no_of_labels),
+                     dtype=torch.float, device=stochasticModel.countTotal_hat.device.type)
+    for g in range(stochasticModel.no_of_groups):
+        TP[g] = stochasticModel.countClass_hat[g, 1]
+    FP = torch.zeros((stochasticModel.no_of_groups,
+                     stochasticModel.no_of_labels), dtype=torch.float,
+                     device=stochasticModel.countTotal_hat.device.type)
+    for g in range(stochasticModel.no_of_groups):
+        FP[g] = stochasticModel.countClass_hat[g, 0]
+    theta_tpr = (TP + dirichletAlpha) / \
+        (stochasticModel.countTotal_hat[:, 1] + concentration)
+    epsilonClass = differentialFairnessMultilabelOutcomeTrain(theta_tpr, stochasticModel.no_of_labels)
+    theta_fpr = (FP + dirichletAlpha) / \
+        (stochasticModel.countTotal_hat[:, 0] + concentration)
+    epsilonClass = epsilonClass + \
+        differentialFairnessMultilabelOutcomeTrain(theta_fpr, stochasticModel.no_of_labels)
+    return torch.max(zeroTerm, (epsilonClass - base_fairness))
+
+
+def differentialFairnessMultilabelOutcomeTrain(probabilitiesOfPositive, num_classes):
+    # input: probabilitiesOfPositive = positive p(y|S) from ML algorithm
+    # output: epsilon = differential fairness measure
+    epsilonPerGroup = torch.zeros(
+        (len(probabilitiesOfPositive), num_classes), dtype=torch.float)
+    for i in range(len(probabilitiesOfPositive)):
+        epsilon = torch.tensor(0.0)  # initialization of DF
+        for j in range(len(probabilitiesOfPositive)):
+            if i == j:
+                continue
+            else:
+                epsilon = torch.max(epsilon, torch.max(torch.abs(torch.log(probabilitiesOfPositive[i])-torch.log(
+                        probabilitiesOfPositive[j]))))  # ratio of probabilities of positive outcome
+        epsilonPerGroup[i] = epsilon  # DF per group
+    epsilon = torch.max(epsilonPerGroup)  # overall DF of the algorithm
+    return epsilon
+
+
 
 FAIR_LOSS_DICT = {
     "multiclass":{
@@ -250,6 +334,9 @@ FAIR_LOSS_DICT = {
         "differential_fairness": fairness_loss,
         "equalized_opportunity": equalized_opportunity_loss,
         "equalized_odds": equalized_odds_loss
+    },
+    "multilabel":{
+        "equalized_odds": multilabel_equalized_odds_loss
     }
 }
 
@@ -466,6 +553,25 @@ def computeMulticlassHardCountsPerLabel(protectedAttributes, predictions, inters
         count_pos_k[index, labels[i], predictions[i]] = count_pos_k[index, labels[i], predictions[i]] + 1
     return count_pos_k, count_tot_k
 
+#################################
+## MULTILABEL COUNT FUNCS      ##
+#################################
+
+def computeMultilabelBatchCountsPerLabel(protectedAttributes, predictions, intersectGroups, num_classes, device='cpu', labels=None):
+    # intersectGroups should be pre-defined so that stochastic update of p(y|S)
+    # can be maintained correctly among different batches
+
+    # compute counts for each intersectional group
+    countsClassOne = torch.zeros((len(intersectGroups), 2, num_classes), device=device)
+    countsTotal = torch.zeros((len(intersectGroups), 2, num_classes), device=device)
+    for i in range(len(predictions)):
+        index = np.where(
+            (np.array(intersectGroups) == protectedAttributes[i]))[0][0]
+        countsTotal[index, 0, :] = countsTotal[index, 0, :] + 1 - labels[i]
+        countsTotal[index, 1, :] = countsTotal[index, 1, :] + labels[i]
+        countsClassOne[index, 0, :] = countsClassOne[index, 0, :] + torch.multiply(1 - labels[i],  predictions[i])
+        countsClassOne[index, 1, :] = countsClassOne[index, 1, :] + torch.multiply(labels[i], predictions[i])
+    return countsClassOne, countsTotal
 
 #################################
 ## HARD COUNTS                 ##
@@ -609,6 +715,19 @@ class stochasticBinaryPerLabelCountModel(stochasticCount):
         self.countTotal_hat = self.countTotal_hat * (N / batch_size)
 
         self.no_of_groups = no_of_groups
+
+
+class stochasticMultilabelPerLabelCountModel(stochasticCount):
+    def __init__(self, no_of_groups, no_of_labels, N, batch_size, rho=.1, device='cpu'):
+        super(stochasticMultilabelPerLabelCountModel, self).__init__(N, batch_size, rho=rho)
+        self.countClass_hat = torch.ones((no_of_groups, 2, no_of_labels), device=device)
+        self.countTotal_hat = torch.ones((no_of_groups, 2, no_of_labels), device=device)
+
+        self.countClass_hat = self.countClass_hat * (N / (batch_size * no_of_groups))
+        self.countTotal_hat = self.countTotal_hat * (N / batch_size)
+
+        self.no_of_groups = no_of_groups
+        self.no_of_labels = no_of_labels
 
 
 #################################

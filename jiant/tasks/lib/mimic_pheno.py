@@ -112,7 +112,7 @@ class PhenotypingTask(Task):
         self.val_fold_ids = val_fold_ids
         self.demographic_column = demographic_column
         self.loss = torch.nn.BCEWithLogitsLoss()
-        self.fairness_loss_dict = fairness.FAIR_LOSS_DICT["binary"]
+        self.fairness_loss_dict = fairness.FAIR_LOSS_DICT["multilabel"]
         self.explicit_subset = None
 
     def get_explicit_subset(self, subset_size=100, seed=12):
