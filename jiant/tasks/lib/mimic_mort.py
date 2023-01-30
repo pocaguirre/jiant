@@ -93,7 +93,8 @@ class InHospitalMortalityTask(Task):
         demographics: List[str]=None, 
         train_size: int=0,
         val_fold_ids: List[str]=["1", "2"],
-        demographic_column: str="gender"
+        demographic_column: str="gender",
+        device='cpu'
         ):
         super().__init__(name, path_dict)
         if num_labels is None and labels is None:
@@ -111,7 +112,7 @@ class InHospitalMortalityTask(Task):
             self.train_size = train_size
         self.val_fold_ids = val_fold_ids
         self.demographic_column = demographic_column
-        self.loss = torch.nn.BCEWithLogitsLoss()
+        self.loss = torch.nn.BCEWithLogitsLoss(pos_weight=torch.tensor([6.5], device=device))
         self.fairness_loss_dict = fairness.FAIR_LOSS_DICT["binary"]
         self.explicit_subset = None
     
