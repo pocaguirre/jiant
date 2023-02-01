@@ -60,7 +60,7 @@ class JiantTaskContainer:
     seed:int
 
 
-def create_task_dict(task_config_dict: dict, verbose: bool = True, device='cpu', demographic_field=None) -> Dict[str, Task]:
+def create_task_dict(task_config_dict: dict, verbose: bool = True, device='cpu', demographic_field=None, intersectional_field=None, primary_task=None) -> Dict[str, Task]:
     """Make map of task name to task instances from map of task name to task config file paths.
 
     Args:
@@ -73,7 +73,10 @@ def create_task_dict(task_config_dict: dict, verbose: bool = True, device='cpu',
     """
     task_dict = {}
     for task_name, task_config_path in task_config_dict.items():
-        task = create_task_from_config_path(config_path=task_config_path, verbose=False, device=device, demographic_field=demographic_field)
+        if intersectional_field is not None and primary_task != task_name:
+            task = create_task_from_config_path(config_path=task_config_path, verbose=False, device=device, demographic_field=intersectional_field)
+        else:
+            task = create_task_from_config_path(config_path=task_config_path, verbose=False, device=device, demographic_field=demographic_field)
         if not task.name == task_name:
             warnings.warn(
                 "task {} from {} has conflicting names: {}/{}. Using {}".format(
@@ -184,7 +187,9 @@ def create_jiant_task_container(
     verbose: bool = True,
     seed: int = 42,
     device='cpu',
-    demographic_field=None
+    demographic_field=None,
+    intersectional_field=None,
+    primary_task=None
 ) -> JiantTaskContainer:
     """Read and interpret config files, initialize configuration objects, return JiantTaskContainer.
 
@@ -203,7 +208,7 @@ def create_jiant_task_container(
         JiantTaskContainer carrying components configured and set up pre-runner.
 
     """
-    task_dict = create_task_dict(task_config_dict=task_config_path_dict, verbose=verbose, device=device, demographic_field=demographic_field)
+    task_dict = create_task_dict(task_config_dict=task_config_path_dict, verbose=verbose, device=device, demographic_field=demographic_field, intersectional_field=intersectional_field, primary_task=primary_task)
     task_cache_dict = create_task_cache_dict(task_cache_config_dict=task_cache_config_dict)
     global_train_config = GlobalTrainConfig.from_dict(global_train_config)
     task_specific_config = create_task_specific_configs(
@@ -242,7 +247,7 @@ def create_jiant_task_container(
 
 
 def create_jiant_task_container_from_dict(
-    jiant_task_container_config_dict: Dict, verbose: bool = True, seed: int = 42, device='cpu', demographic_field=None
+    jiant_task_container_config_dict: Dict, verbose: bool = True, seed: int = 42, device='cpu', demographic_field=None, intersectional_field=None, primary_task=None
 ) -> JiantTaskContainer:
     return create_jiant_task_container(
         task_config_path_dict=jiant_task_container_config_dict["task_config_path_dict"],
@@ -256,12 +261,14 @@ def create_jiant_task_container_from_dict(
         verbose=verbose,
         seed=seed,
         device=device,
-        demographic_field=demographic_field
+        demographic_field=demographic_field,
+        intersectional_field=intersectional_field,
+        primary_task=primary_task
     )
 
 
 def create_jiant_task_container_from_json(
-    jiant_task_container_config_path: str, verbose: bool = True, seed=42, device='cpu', demographic_field=None,
+    jiant_task_container_config_path: str, verbose: bool = True, seed=42, device='cpu', demographic_field=None, intersectional_field=None, primary_task=None
 ) -> JiantTaskContainer:
     return create_jiant_task_container_from_dict(
         jiant_task_container_config_dict=py_io.read_json(jiant_task_container_config_path),
@@ -269,4 +276,6 @@ def create_jiant_task_container_from_json(
         seed=seed,
         device=device,
         demographic_field=demographic_field,
+        intersectional_field=intersectional_field,
+        primary_task=primary_task
     )

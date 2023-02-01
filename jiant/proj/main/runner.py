@@ -208,8 +208,6 @@ class JiantRunner:
         val_dataloader_dict = {}
         for task_name in task_name_list:
             task = self.jiant_task_container.task_dict[task_name]
-            if task_name in ['sentiment', 'topic']:
-                use_subset=False
             eval_cache = self.jiant_task_container.task_cache_dict[task_name][phase]
             task_specific_config = self.jiant_task_container.task_specific_configs[task_name]
             val_dataloader_dict[task_name] = get_eval_dataloader_from_cache(
