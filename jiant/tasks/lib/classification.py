@@ -79,7 +79,16 @@ class ClassificationTask(Task):
 
     TASK_TYPE = TaskTypes.CLASSIFICATION
 
-    def __init__(self, name: str, path_dict: dict, num_labels: int=None, labels: List[str]=None, demographics: List[str]=None, train_size: int=0):
+    def __init__(
+            self, name: str, 
+            path_dict: dict, 
+            num_labels: int=None, 
+            labels: List[str]=None, 
+            demographics: List[str]=None, 
+            train_size: int=0, 
+            device=None,
+            demographic_field=None
+            ):
         super().__init__(name, path_dict)
         if num_labels is None and labels is None:
             raise TypeError("num_labels or labels must be passed!")
@@ -96,6 +105,15 @@ class ClassificationTask(Task):
             self.train_size = train_size
         self.loss = CrossEntropyLoss()
         self.fairness_loss_dict = fairness.FAIR_LOSS_DICT["multiclass"]
+        self.label_dim = 1
+        if demographic_field is not None:
+            self.demographic_column = demographic_field
+            if demographic_field == "age":
+                self.demographics = ['U35', 'O45']
+            else:
+                self.demographics = ['M', 'F']
+        else:
+            self.demographic_column = ["gender", "age"]
 
 
     def get_train_examples(self):

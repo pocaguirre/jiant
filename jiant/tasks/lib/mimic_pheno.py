@@ -93,7 +93,7 @@ class PhenotypingTask(Task):
             demographics: List[str]=None, 
             train_size: int=0,
             val_fold_ids: List[str]=["1", "2"],
-            demographic_column: str="gender",
+            demographic_field: str="gender",
             device="cpu"
         ):
         super().__init__(name, path_dict)
@@ -111,7 +111,9 @@ class PhenotypingTask(Task):
         if train_size != 0:
             self.train_size = train_size
         self.val_fold_ids = val_fold_ids
-        self.demographic_column = demographic_column
+        if demographic_field is None:
+            demographic_field = "gender"
+        self.demographic_column = demographic_field
         self.loss = torch.nn.BCEWithLogitsLoss(pos_weight=torch.tensor(
             [5.15881033, 17.05098684, 9.20455602, 2.52723767, 6.76441457,
              7.5809226, 5.09383676, 14.01367989, 3.3917567, 1.98436438,
@@ -122,6 +124,7 @@ class PhenotypingTask(Task):
         ))
         self.fairness_loss_dict = fairness.FAIR_LOSS_DICT["multilabel"]
         self.explicit_subset = None
+        self.label_dim = len(self.LABELS)
 
     def get_explicit_subset(self, subset_size=100, seed=12):
         df = pd.read_pickle(self.train_path)

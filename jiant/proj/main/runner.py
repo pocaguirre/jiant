@@ -18,6 +18,8 @@ from jiant.utils.display import maybe_tqdm
 from jiant.utils.python.datastructures import InfiniteYield, ExtendedDataClassMixin
 from torch.nn import CrossEntropyLoss
 
+from jiant.proj.main.components.task_sampler import DynamicMultiTaskSampler
+
 
 @dataclass
 class RunnerParameters(ExtendedDataClassMixin):
@@ -111,11 +113,18 @@ class JiantRunner:
                 task=task,
                 compute_loss=False,
             )
-            loss = task.loss(
-                model_output.logits.view(-1,
-                                         len(task.LABELS)),
-                batch.label_id.view(-1, len(task.LABELS)).float(),
-            )
+            if task.loss._get_name() == "CrossEntropyLoss":
+                loss = task.loss(
+                    model_output.logits.view(-1,
+                                            len(task.LABELS)),
+                    batch.label_id.view(-1),
+                )
+            else:
+                loss = task.loss(
+                    model_output.logits.view(-1,
+                                            len(task.LABELS)),
+                    batch.label_id.view(-1, task.label_dim).float(),
+                )
             loss = self.complex_backpropagate(
                 loss=loss,
                 gradient_accumulation_steps=task_specific_config.gradient_accumulation_steps,
@@ -158,6 +167,8 @@ class JiantRunner:
                 demographic_groups=self.jiant_task_container.task_dict[task_name].demographics,
                 number_classes=len(self.jiant_task_container.task_dict[task_name].LABELS),
             )
+        if type(self.jiant_task_container.task_sampler) == DynamicMultiTaskSampler:
+            self.jiant_task_container.task_sampler.update(evaluate_dict)
         return evaluate_dict
 
     def run_test(self, task_name_list, verbose=True):
@@ -197,6 +208,8 @@ class JiantRunner:
         val_dataloader_dict = {}
         for task_name in task_name_list:
             task = self.jiant_task_container.task_dict[task_name]
+            if task_name in ['sentiment', 'topic']:
+                use_subset=False
             eval_cache = self.jiant_task_container.task_cache_dict[task_name][phase]
             task_specific_config = self.jiant_task_container.task_specific_configs[task_name]
             val_dataloader_dict[task_name] = get_eval_dataloader_from_cache(
@@ -310,10 +323,18 @@ def run_val(
                 task=task,
                 compute_loss=False,
             )
-            loss = task.loss(
-                model_output.logits.view(-1, number_classes),
-                batch.label_id.view(-1, len(task.LABELS)).float(),
-            )
+            if task.loss._get_name() == "CrossEntropyLoss":
+                loss = task.loss(
+                    model_output.logits.view(-1,
+                                             len(task.LABELS)),
+                    batch.label_id.view(-1),
+                )
+            else:
+                loss = task.loss(
+                    model_output.logits.view(-1,
+                                             len(task.LABELS)),
+                    batch.label_id.view(-1, task.label_dim).float(),
+                )
         batch_logits = model_output.logits.detach().cpu().numpy()
         batch_loss = loss.mean().item()
         total_eval_loss += batch_loss

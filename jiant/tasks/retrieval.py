@@ -196,7 +196,7 @@ def get_task_class(task_name: str):
     return task_class
 
 
-def create_task_from_config(config: dict, base_path: Optional[str] = None, verbose: bool = False, device='cpu'):
+def create_task_from_config(config: dict, base_path: Optional[str] = None, verbose: bool = False, device='cpu', demographic_field=None):
     """Create task instance from task config.
 
     Args:
@@ -217,6 +217,7 @@ def create_task_from_config(config: dict, base_path: Optional[str] = None, verbo
             config["paths"][k] = os.path.join(base_path, path)
     task_kwargs = config.get("kwargs", {})
     task_kwargs['device'] = device
+    task_kwargs['demographic_field'] = demographic_field
     if verbose:
         print(task_class.__name__)
         for k, v in config["paths"].items():
@@ -225,7 +226,7 @@ def create_task_from_config(config: dict, base_path: Optional[str] = None, verbo
     return task_class(name=config["name"], path_dict=config["paths"], **task_kwargs)
 
 
-def create_task_from_config_path(config_path: str, verbose: bool = False, device='cpu'):
+def create_task_from_config_path(config_path: str, verbose: bool = False, device='cpu', demographic_field=None):
     """Creates task instance from task config filepath.
 
     Args:
@@ -240,5 +241,6 @@ def create_task_from_config_path(config_path: str, verbose: bool = False, device
         read_json(config_path),
         base_path=os.path.split(config_path)[0],
         verbose=verbose,
-        device=device
+        device=device,
+        demographic_field=demographic_field
     )
