@@ -108,6 +108,7 @@ class ClassificationTask(Task):
         self.label_dim = 1
         if demographic_field is not None:
             self.demographic_column = demographic_field
+            self.intersectional_demographics = self.demographics
             if demographic_field == "age":
                 self.demographics = ['U35', 'O45']
             else:
