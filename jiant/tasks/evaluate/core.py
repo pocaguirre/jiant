@@ -532,15 +532,16 @@ class MimicPhenoScheme(BaseLogitsEvaluationScheme):
             )
 
     @classmethod
-    def compute_metrics_from_preds_and_labels(cls, preds, labels, demographics, demographic_groups, number_classes):
+    def compute_metrics_from_preds_and_labels(cls, preds, labels, demographics, demographic_groups, number_classes, short=False):
         # noinspection PyUnresolvedReferences
         labels = np.array(labels)
-        hamming = hamming_loss(labels, preds)
+        if not short:
+            hamming = hamming_loss(labels, preds)
+            parity_list = []
+            auprc = average_precision_score(labels, preds, average=None).tolist()
+            f1 = f1_score(y_true=labels, y_pred=preds, average=None).tolist()
         eq_odds_list = []
-        parity_list = []
         auroc = roc_auc_score(labels, preds, average=None).tolist()
-        auprc = average_precision_score(labels, preds, average=None).tolist()
-        f1 = f1_score(y_true=labels, y_pred=preds, average=None).tolist()
         for i in range(preds.shape[1]):
             labs = labels[:, i]
             pred = preds[:, i]
@@ -558,31 +559,41 @@ class MimicPhenoScheme(BaseLogitsEvaluationScheme):
                     base_fairness=0.0,
                     concentration=0.0
                 ).item())
-            count_positive, count_total = fairness.compute_binary_hard_batch_counts(
-                protectedAttributes=demographics,
-                predictions=pred,
-                intersectGroups=demographic_groups,
-                device="cpu"
-            )
-            parity_list.append(fairness.binary_differential_fairness(
-                count_pos=count_positive,
-                count_total=count_total,
-                base_fairness=0.0,
-                concentration=1.0
-            ).item())
-        minor = {
-            "hamming": hamming,
-            "f1_macro": np.mean(f1),
-            "f1": {"score": np.mean(f1), "all": f1},
-            "equalized_odds": np.mean(eq_odds_list),
-            "differential_fairness": np.mean(parity_list),
-            "auroc": {"score": np.mean(auroc), "all": auroc},
-            "auprc": {"socre": np.mean(auprc), "all": auprc},
-            "score_diffs": fairness.demographic_wise_everything_multilabel(
-                preds, labels, demographics, demographic_groups
-            )
-        }
-        return Metrics(major=minor["f1_macro"], minor=minor)
+            if not short:
+                count_positive, count_total = fairness.compute_binary_hard_batch_counts(
+                    protectedAttributes=demographics,
+                    predictions=pred,
+                    intersectGroups=demographic_groups,
+                    device="cpu"
+                )
+                parity_list.append(fairness.binary_differential_fairness(
+                    count_pos=count_positive,
+                    count_total=count_total,
+                    base_fairness=0.0,
+                    concentration=1.0
+                ).item())
+        if not short:
+            minor = {
+                "hamming": hamming,
+                "f1_macro": np.mean(f1),
+                "f1": {"score": np.mean(f1), "all": f1},
+                "equalized_odds": np.mean(eq_odds_list),
+                "differential_fairness": np.mean(parity_list),
+                "auroc": {"score": np.mean(auroc), "all": auroc},
+                "auprc": {"socre": np.mean(auprc), "all": auprc},
+                "score_diffs": fairness.demographic_wise_everything_multilabel(
+                    preds, labels, demographics, demographic_groups
+                )
+            }
+        else:
+            minor = {
+                "equalized_odds": np.mean(eq_odds_list),
+                "auroc": {"score": np.mean(auroc), "all": auroc},
+                "score_diffs": fairness.demographic_wise_everything_multilabel(
+                    preds, labels, demographics, demographic_groups
+                )
+            }
+        return Metrics(major=0, minor=minor)
 
 class FairScheme(BaseLogitsEvaluationScheme):
     def get_labels_from_cache_and_examples(self, task, cache, examples):
