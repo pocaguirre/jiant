@@ -542,6 +542,7 @@ class MimicPhenoScheme(BaseLogitsEvaluationScheme):
             f1 = f1_score(y_true=labels, y_pred=preds, average=None).tolist()
         eq_odds_list = []
         auroc = roc_auc_score(labels, preds, average=None).tolist()
+        auroc_micro = roc_auc_score(labels, preds, average="micro")
         for i in range(preds.shape[1]):
             labs = labels[:, i]
             pred = preds[:, i]
@@ -588,7 +589,7 @@ class MimicPhenoScheme(BaseLogitsEvaluationScheme):
         else:
             minor = {
                 "equalized_odds": np.mean(eq_odds_list),
-                "auroc": {"score": np.mean(auroc), "all": auroc},
+                "auroc": {"score": auroc_micro, "all": auroc},
                 "score_diffs": fairness.demographic_wise_everything_multilabel(
                     preds, labels, demographics, demographic_groups
                 )

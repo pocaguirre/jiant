@@ -24,19 +24,36 @@ def demographic_wise_f1(preds, labels, demographics, demographic_groups):
     scores = {}
     min_s = 1.0
     max_s = 0
+    macro_recall = {}
+    macro_spec = {}
     for dem in demographic_groups:
         index = [True if dem == g else False for g in demographics]
         score = f1_score(labels[index], preds[index], average="macro")
+        matrix = confusion_matrix(labels[index], preds[index])
+        recalls = []
+        specificities = []
+        for i in range(len(matrix)):
+            matrix_all = np.sum(matrix)
+            pos = np.sum(matrix[i, :])
+            recalls.append(matrix[i, i] / pos)
+            specificities.append((matrix_all - pos - np.sum(matrix[:, i]) + matrix[i,i]) / (matrix_all  - pos))
+        macro_recall[dem] = np.mean(recalls)
+        macro_spec[dem] = np.mean(specificities)
         scores[dem] = score
         if score < min_s:
             min_s = score
         if score > max_s:
             max_s = score
     scores['f1_diff'] = max_s - min_s
+    scores['recalls'] = macro_recall
+    scores['specificities'] = macro_spec
     return scores
 
 
 def demographic_wise_everything_multilabel(preds, labels, demographics, demographic_groups):
+    """
+    micro averaging
+    """
     scores = {
         "recall": {},
         "specificity": {},
@@ -44,21 +61,17 @@ def demographic_wise_everything_multilabel(preds, labels, demographics, demograp
     }
     for dem in demographic_groups:
         index = [True if dem == g else False for g in demographics]
-        recalls = []
-        specs = []
-        pars = []
-        for i, some in enumerate(multilabel_confusion_matrix(labels[index], preds[index])):
-            tn, fp, fn, tp = some.ravel()
-            recalls.append(tp / (tp + fn))
-            specs.append(tn / (tn + fp))
-            pars.append(sum(preds[index, i]) / sum(labels[index, i]))
-        scores['recall'][dem] = recalls
-        scores["specificity"][dem] = specs
-        scores["parity"][dem] = pars
-    scores['recall']['diff'] = list(np.max([r for d, r in scores['recall'].items()], axis=0) - np.min([r for d, r in scores['recall'].items()], axis=0))
-    scores['specificity']['diff'] = list(np.max([r for d, r in scores['specificity'].items()], axis=0) - np.min([r for d, r in scores['specificity'].items()], axis=0))
-    scores['parity']['diff'] = list(np.max(
-        [r for d, r in scores['parity'].items()], axis=0) - np.min([r for d, r in scores['parity'].items()], axis=0))
+        tn, fp, fn, tp = multilabel_confusion_matrix(labels[index], preds[index]).sum(axis=0).ravel()
+        recall = tp / (tp + fn)
+        specificity = tn / (tn + fp)
+        parity = sum(preds[index]) / sum(labels[index])
+        scores['recall'][dem] = recall
+        scores["specificity"][dem] = specificity
+        scores["parity"][dem] = parity.tolist()[0]
+    scores['recall']['diff'] = np.max([r for d, r in scores['recall'].items()]) - np.min([r for d, r in scores['recall'].items()])
+    scores['specificity']['diff'] = np.max([r for d, r in scores['specificity'].items()]) - np.min([r for d, r in scores['specificity'].items()])
+    scores['parity']['diff'] = np.max(
+        [r for d, r in scores['parity'].items()]) - np.min([r for d, r in scores['parity'].items()])
     return scores
 
 
