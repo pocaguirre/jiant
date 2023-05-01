@@ -20,6 +20,31 @@ from sklearn.metrics import f1_score, confusion_matrix, multilabel_confusion_mat
 #################################
 
 
+def demographic_wise_f1_binary(preds, labels, demographics, demographic_groups):
+    scores = {}
+    min_s = 1.0
+    max_s = 0
+    recall = {}
+    spec = {}
+    for dem in demographic_groups:
+        index = [True if dem == g else False for g in demographics]
+        score = f1_score(labels[index], preds[index], average="macro")
+        matrix = confusion_matrix(labels[index], preds[index])
+        # breakpoint()
+        recall[dem] = matrix[0, 0] / np.sum(matrix[0, :])
+        spec[dem] = matrix[1,1] / np.sum(matrix[1, :])
+        
+        scores[dem] = score
+        if score < min_s:
+            min_s = score
+        if score > max_s:
+            max_s = score
+    scores['f1_diff'] = max_s - min_s
+    scores['recalls'] = recall
+    scores['specificities'] = spec
+    return scores
+
+
 def demographic_wise_f1(preds, labels, demographics, demographic_groups):
     scores = {}
     min_s = 1.0
@@ -36,7 +61,10 @@ def demographic_wise_f1(preds, labels, demographics, demographic_groups):
             matrix_all = np.sum(matrix)
             pos = np.sum(matrix[i, :])
             recalls.append(matrix[i, i] / pos)
-            specificities.append((matrix_all - pos - np.sum(matrix[:, i]) + matrix[i,i]) / (matrix_all  - pos))
+            if matrix_all - pos == 0:
+                specificities.append(0.0)
+            else:
+                specificities.append((matrix_all - pos - np.sum(matrix[:, i]) + matrix[i,i]) / (matrix_all  - pos))
         macro_recall[dem] = np.mean(recalls)
         macro_spec[dem] = np.mean(specificities)
         scores[dem] = score

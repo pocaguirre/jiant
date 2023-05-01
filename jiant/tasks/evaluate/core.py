@@ -17,6 +17,9 @@ from typing import List
 from jiant.tasks.lib.classification import ClassificationTask
 from jiant.tasks.lib.mimic_mort import InHospitalMortalityTask
 from jiant.tasks.lib.mimic_pheno  import PhenotypingTask
+from jiant.tasks.lib.bias_bios import BiasInBiosTask
+from jiant.tasks.lib.twitter_aae import TwitterAAETask
+from jiant.tasks.lib.hatexplain import HateXplainTask
 from jiant.ext.fairness import DF_training as fairness
 
 import jiant.shared.model_resolution as model_resolution
@@ -671,6 +674,76 @@ class FairScheme(BaseLogitsEvaluationScheme):
         }
         return Metrics(major=minor["f1_macro"], minor=minor)
 
+class BinaryFairScheme(BaseLogitsEvaluationScheme):
+    def get_labels_from_cache_and_examples(self, task, cache, examples):
+        return get_label_ids_from_cache(cache=cache)
+    
+    def get_accumulator(self):
+        return ConcatenateLogitsDemographicsAccumulator()
+
+    def get_preds_from_accumulator(self, task, accumulator):
+        logits = accumulator.get_accumulated()
+        return np.argmax(logits, axis=1)
+    
+    def compute_metrics_from_accumulator(
+        self, task, 
+        accumulator: ConcatenateLogitsAccumulator, 
+        tokenizer, 
+        labels: list,
+        demographic_groups: list,
+        number_classes: int,
+    ) -> Metrics:
+        preds = self.get_preds_from_accumulator(task=task, accumulator=accumulator)
+        demographics = accumulator.get_demographics()
+        return self.compute_metrics_from_preds_and_labels(
+            preds=preds, 
+            labels=labels, 
+            demographics=demographics,
+            demographic_groups=demographic_groups,
+            number_classes=number_classes
+            )
+
+    @classmethod
+    def compute_metrics_from_preds_and_labels(cls, preds, labels, demographics, demographic_groups, number_classes):
+        # noinspection PyUnresolvedReferences
+        acc = float((preds == labels).mean())
+        labels = np.array(labels)
+        count_positive, count_total = fairness.compute_binary_hard_batch_counts_per_label(
+            protectedAttributes=demographics,
+            predictions=preds,
+            intersectGroups=demographic_groups,
+            device="cpu",
+            labels=labels
+        )
+        eq_odds = fairness.binary_equalized_odds(
+                count_pos=count_positive,
+                count_total=count_total,
+                num_groups=len(demographic_groups),
+                base_fairness=0.0,
+                concentration=0.0
+            ).item()
+        count_positive, count_total = fairness.compute_binary_hard_batch_counts(
+            protectedAttributes=demographics,
+            predictions=preds,
+            intersectGroups=demographic_groups,
+            device="cpu"
+        )
+        e_diff = fairness.binary_differential_fairness(
+            count_pos=count_positive,
+            count_total=count_total,
+            base_fairness=0.0,
+            concentration=1.0
+        ).item()
+        minor = {
+            "acc": acc,
+            "f1_macro": f1_score(y_true=labels, y_pred=preds, average="macro"),
+            "equalized_odds": eq_odds,
+            "differential_fairness": e_diff,
+            "f1_diff": fairness.demographic_wise_f1_binary(
+                preds, labels, demographics, demographic_groups
+            )
+        }
+        return Metrics(major=minor["f1_macro"], minor=minor)
 
 
 class AccAndF1EvaluationScheme(BaseLogitsEvaluationScheme):
@@ -1458,8 +1531,10 @@ def get_evaluation_scheme_for_task(task) -> BaseEvaluationScheme:
         return Bucc2018EvaluationScheme()
     elif isinstance(task, tasks_retrieval.TatoebaTask):
         return TatoebaEvaluationScheme()
-    elif isinstance(task, ClassificationTask):
+    elif isinstance(task, (ClassificationTask, BiasInBiosTask, TwitterAAETask, HateXplainTask)):
         return FairScheme()
+    # elif isinstance(task, HateXplainTask):
+    #     return BinaryFairScheme()
     elif isinstance(task, InHospitalMortalityTask):
         return MimicMortScheme()
     elif isinstance(task, PhenotypingTask):

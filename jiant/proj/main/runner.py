@@ -235,6 +235,11 @@ class JiantRunner:
             if use_subset and hasattr(self.jiant_task_container.task_dict[task_name], 'val_note_id_subset'):
                 val_labels = np.array(val_labels)[
                     self.jiant_task_container.task_dict[task_name].val_note_id_subset]
+            elif use_subset and hasattr(self.jiant_task_container.task_dict[task_name], 'explicit_subset'):
+                if self.jiant_task_container.task_dict[task_name].explicit_subset is None:
+                    self.jiant_task_container.task_dict[task_name].get_explicit_subset()
+                val_labels = np.array(val_labels)[
+                    self.jiant_task_container.task_dict[task_name].explicit_subset]
             elif use_subset:
                 val_labels = val_labels[: task_specific_config.eval_subset_num]
             val_labels_dict[task_name] = val_labels

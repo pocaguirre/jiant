@@ -76,6 +76,10 @@ def create_task_dict(task_config_dict: dict, verbose: bool = True, device='cpu',
         if intersectional_field is not None and primary_task != task_name:
             task = create_task_from_config_path(config_path=task_config_path, verbose=False, device=device, demographic_field=intersectional_field)
         else:
+            if task_name == 'hatexplain_race':
+                demographic_field = 'race'
+            elif task_name == 'hatexplain_gender':
+                demographic_field = 'gender'
             task = create_task_from_config_path(config_path=task_config_path, verbose=False, device=device, demographic_field=demographic_field)
         if not task.name == task_name:
             warnings.warn(

@@ -90,6 +90,9 @@ from jiant.tasks.lib.piqa import PiqaTask
 from jiant.tasks.lib.classification import ClassificationTask
 from jiant.tasks.lib.mimic_mort import InHospitalMortalityTask
 from jiant.tasks.lib.mimic_pheno import PhenotypingTask
+from jiant.tasks.lib.bias_bios import BiasInBiosTask
+from jiant.tasks.lib.twitter_aae import TwitterAAETask
+from jiant.tasks.lib.hatexplain import HateXplainTask
 
 from jiant.tasks.core import Task
 from jiant.utils.python.io import read_json
@@ -184,6 +187,10 @@ TASK_DICT = {
     "piqa": PiqaTask,
     "mimic_mort": InHospitalMortalityTask,
     "mimic_pheno": PhenotypingTask,
+    "bias_bios": BiasInBiosTask,
+    "twitter_aae": TwitterAAETask,
+    "hatexplain_race": HateXplainTask,
+    "hatexplain_gender": HateXplainTask
 }
 
 
@@ -217,6 +224,10 @@ def create_task_from_config(config: dict, base_path: Optional[str] = None, verbo
             config["paths"][k] = os.path.join(base_path, path)
     task_kwargs = config.get("kwargs", {})
     task_kwargs['device'] = device
+    if config['task'] == 'hatexplain_race':
+        demographic_field = 'race'
+    if config['task'] == 'hatexplain_gender':
+        demographic_field = 'gender'
     task_kwargs['demographic_field'] = demographic_field
     if verbose:
         print(task_class.__name__)

@@ -8,6 +8,9 @@ from jiant.utils.display import maybe_tqdm, maybe_trange
 from jiant.tasks.lib.classification import ClassificationTask
 from jiant.tasks.lib.mimic_mort import InHospitalMortalityTask
 from jiant.tasks.lib.mimic_pheno import PhenotypingTask
+from jiant.tasks.lib.bias_bios import BiasInBiosTask
+from jiant.tasks.lib.twitter_aae import TwitterAAETask
+from jiant.tasks.lib.hatexplain import HateXplainTask
 
 
 class MaxValidLengthRecorder:
@@ -153,7 +156,7 @@ def iter_chunk_convert_examples_to_dataset(
         )
     ):
         metadata = {"example_id": i}
-        if isinstance(task, ClassificationTask):
+        if isinstance(task, (ClassificationTask, BiasInBiosTask, TwitterAAETask, HateXplainTask)):
             metadata['demographics'] = examples[i].demographics
         if isinstance(task, (InHospitalMortalityTask, PhenotypingTask)):
             metadata['noteid'] = examples[i].noteid
