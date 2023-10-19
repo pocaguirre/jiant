@@ -31,8 +31,8 @@ def demographic_wise_f1_binary(preds, labels, demographics, demographic_groups):
         score = f1_score(labels[index], preds[index], average="macro")
         matrix = confusion_matrix(labels[index], preds[index])
         # breakpoint()
-        recall[dem] = matrix[0, 0] / np.sum(matrix[0, :])
-        spec[dem] = matrix[1,1] / np.sum(matrix[1, :])
+        recall[dem] = matrix[1, 1] / np.sum(matrix[1, :])
+        spec[dem] = matrix[0,0] / np.sum(matrix[0, :])
         
         scores[dem] = score
         if score < min_s:
