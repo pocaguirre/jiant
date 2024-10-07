@@ -120,7 +120,7 @@ class InHospitalMortalityTask(Task):
         self.label_dim = 1
     
 
-    def get_explicit_subset(self, subset_size=100, seed=12):
+    def get_explicit_subset(self, subset_size=150, seed=12):
         df = pd.read_pickle(self.train_path)
         val = df[df.fold.isin(self.val_fold_ids)]
         note_ids = val.groupby([self.demographic_column, 'inhosp_mort']).apply(
