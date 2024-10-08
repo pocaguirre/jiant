@@ -1,4 +1,4 @@
-🚨**Update**🚨: As of 2021/10/17, the `jiant` project is no longer being actively maintained. This means there will be no plans to add new models, tasks, or features, or update support to new libraries.
+🚨**Update**🚨: This is a fork of the original *jiant* library. In this fork, we added a suit of fairness functions to both evaluate and add to the multitask setting. These suit of functions are available both for metrics and they have their own differrentiable implementation that can be added in a minibatch setting.
 
 <div align="center">
 
@@ -126,6 +126,7 @@ The `jiant` project's contributing guidelines can be found [here](CONTRIBUTING.m
 ## Citation
 
 If you use `jiant ≥ v2.0.0` in academic work, please cite it directly:
+
 
 ```
 @misc{phang2020jiant,
